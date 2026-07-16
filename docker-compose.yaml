@@ -1,0 +1,15 @@
+﻿services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tg_scheduler_db
+    environment:
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: scheduler_pass
+      POSTGRES_DB: tg_scheduler
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
