@@ -1,9 +1,15 @@
+using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using TelegramScheduler.Data;
 using TelegramScheduler.Services;
-using Telegram.Bot;
+using DotNetEnv;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
+
+Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,8 +18,8 @@ builder.Services.AddOpenApi();
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
                        ?? throw new InvalidOperationException("Connection string 'Default' not found");
-var botToken = builder.Configuration["Telegram:BotToken"]
-               ?? throw new InvalidOperationException("Telegram:BotToken not found");
+builder.Services.Configure<TdLibOptions>(
+    builder.Configuration.GetSection("TdLib"));
 
 builder.Services.AddHangfire(cfg => cfg
     .UsePostgreSqlStorage(c => c.UseNpgsqlConnection(connectionString)));
@@ -21,30 +27,73 @@ builder.Services.AddHangfireServer();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-builder.Services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(botToken));
-builder.Services.AddScoped<NotifierService>();
+builder.Services
+    .AddScoped<IPasswordHasher<TelegramScheduler.Models.User>, PasswordHasher<TelegramScheduler.Models.User>>();
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
         policy.WithOrigins("http://localhost:3000")
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
 });
+builder.Services.AddSingleton<TelegramSessionManager>();
+builder.Services.AddScoped<TelegramSessionService>();
+builder.Services.AddScoped<TelegramChannelService>();
+builder.Services.AddScoped<TelegramAccountService>();
+builder.Services.AddScoped<TelegramMediaService>();
+builder.Services.AddScoped<SignedUrlService>();
 
-var app = builder.Build();  
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+        };
 
-// Configure the HTTP request pipeline.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.Request.Cookies.ContainsKey("auth_token"))
+                {
+                    context.Token = context.Request.Cookies["auth_token"];
+                }
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+}); 
+
+builder.Services.AddAuthorization();
+builder.Services.Configure<MediaStorageOptions>(builder.Configuration.GetSection("MediaStorage"));
+
+new TdLib.TdClient().Execute(new TdLib.TdApi.SetLogVerbosityLevel { NewVerbosityLevel = 1 });
+
+var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-
 app.UseHttpsRedirection();
 app.UseCors();
+app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
