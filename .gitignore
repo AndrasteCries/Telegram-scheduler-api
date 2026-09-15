@@ -25,6 +25,12 @@ appsettings.json
 
 ./tdlib-sessions
 ./storage
+storage/
+tdlib-sessions/
+*.session
+*.session-journal
+*.db
+
 # User Secrets
 secrets.json
 
