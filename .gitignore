@@ -21,7 +21,10 @@ obj/
 # Environment
 .env
 .env.*
+appsettings.json
 
+./tdlib-sessions
+./storage
 # User Secrets
 secrets.json
 
