@@ -205,6 +205,9 @@ namespace TelegramScheduler.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
                     b.Property<string>("TdlibSessionPath")
                         .IsRequired()
                         .HasColumnType("text");

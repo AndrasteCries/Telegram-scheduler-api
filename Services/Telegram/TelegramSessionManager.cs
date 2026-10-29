@@ -45,7 +45,6 @@ public class TelegramSessionManager
             _accountSessions[telegramAccountId] = session;
     }
 
-
     public bool TryGetByAccount(long telegramAccountId, out TelegramUserSession session)
         => _accountSessions.TryGetValue(telegramAccountId, out session!);
 
@@ -103,6 +102,10 @@ public class TelegramSessionManager
 
             case TdApi.AuthorizationState.AuthorizationStateReady:
                 UpdateState(session, TelegramAuthState.Ready);
+                break;    
+            
+            case TdApi.AuthorizationState.AuthorizationStateLoggingOut:
+                UpdateState(session, TelegramAuthState.LoggingOut);
                 break;
         }
     }
@@ -155,6 +158,7 @@ public class TelegramSessionManager
         TdApi.AuthorizationState.AuthorizationStateWaitPassword => TelegramAuthState.WaitPassword,
         TdApi.AuthorizationState.AuthorizationStateReady => TelegramAuthState.Ready,
         TdApi.AuthorizationState.AuthorizationStateClosed => TelegramAuthState.Error,
+        TdApi.AuthorizationState.AuthorizationStateLoggingOut => TelegramAuthState.LoggingOut,
         _ => TelegramAuthState.None
     };
 
@@ -208,6 +212,81 @@ public class TelegramSessionManager
         finally
         {
             gate.Release();
+        }
+    }
+    
+    public async Task<TelegramUserSession> GetOrCreateReauthenticationSessionAsync(long telegramAccountId, string sessionPath)
+    {
+        if (_accountSessions.TryGetValue(telegramAccountId, out var existing))
+        {
+            return existing;
+        }
+
+        var gate = _accountLocks.GetOrAdd(telegramAccountId, _ => new SemaphoreSlim(1, 1));
+
+        await gate.WaitAsync();
+
+        try
+        {
+            if (_accountSessions.TryGetValue(telegramAccountId, out existing))
+            {
+                return existing;
+            }
+
+            var client = new TdClient();
+
+            var session = new TelegramUserSession
+            {
+                Client = client,
+                SessionPath = sessionPath
+            };
+
+            client.UpdateReceived += (_, update) =>
+                OnUpdateReceived(telegramAccountId, session, update);
+
+            _accountSessions[telegramAccountId] = session;
+
+            var state = await WaitForAnyAsync(session, new[]
+                {
+                    TelegramAuthState.WaitPhoneNumber,
+                    TelegramAuthState.WaitCode,
+                    TelegramAuthState.WaitPassword,
+                    TelegramAuthState.Ready,
+                    TelegramAuthState.Error
+                },
+                TimeSpan.FromSeconds(30));
+
+            if (state == TelegramAuthState.Error)
+            {
+                _accountSessions.TryRemove(
+                    telegramAccountId,
+                    out _);
+
+                throw new InvalidOperationException(
+                    "Failed to start Telegram reauthentication.");
+            }
+
+            return session;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+    
+    public async Task RemoveAccountSessionAsync(long telegramAccountId)
+    {
+        if (!_accountSessions.TryRemove(telegramAccountId, out var session))
+        {
+            return;
+        }
+
+        try
+        {
+            await session.Client.ExecuteAsync(new TdApi.Close());
+        }
+        catch
+        {
         }
     }
 }

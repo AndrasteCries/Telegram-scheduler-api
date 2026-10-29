@@ -9,6 +9,7 @@ public enum TelegramAuthState
     WaitCode,
     WaitPassword,
     Ready,
+    LoggingOut,
     Error
 }
 

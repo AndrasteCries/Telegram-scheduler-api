@@ -1,5 +1,12 @@
 ﻿namespace TelegramScheduler.Models;
 
+public enum TelegramAccountStatus
+{
+    Connected,
+    NeedsReauthentication,
+    Disconnected,
+}
+
 public class TelegramAccount : Entity
 {
     public long UserId { get; set; }
@@ -17,4 +24,7 @@ public class TelegramAccount : Entity
     public ICollection<Channel> Channels { get; set; } = [];
     
     public string PhotoPath { get; set; }
+    
+    public TelegramAccountStatus Status { get; set; } = TelegramAccountStatus.Disconnected;
+    
 }

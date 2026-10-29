@@ -8,6 +8,9 @@ using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
+using TelegramScheduler.Services.Exeptions;
+using TelegramScheduler.Services.Posts;
+using TelegramScheduler.Services.Templates;
 
 Env.Load();
 
@@ -18,6 +21,7 @@ builder.Services.AddOpenApi();
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
                        ?? throw new InvalidOperationException("Connection string 'Default' not found");
+
 builder.Services.Configure<TdLibOptions>(
     builder.Configuration.GetSection("TdLib"));
 
@@ -46,6 +50,11 @@ builder.Services.AddScoped<TelegramChannelService>();
 builder.Services.AddScoped<TelegramAccountService>();
 builder.Services.AddScoped<TelegramMediaService>();
 builder.Services.AddScoped<SignedUrlService>();
+builder.Services.AddScoped<TemplateService>();
+builder.Services.AddScoped<PostService>();
+builder.Services.AddScoped<PostDateValidator>();
+builder.Services.AddScoped<PostFileValidator>();
+builder.Services.AddScoped<PostAccessService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -90,6 +99,7 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();
 app.UseCors();
 app.UseAuthentication();

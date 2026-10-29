@@ -8,7 +8,7 @@ public class UpdatePostRequest
         public string? Text { get; set; }
 
         [FromForm(Name = "scheduledAtUtc")]
-        public DateTime? ScheduledAtUtc { get; set; }
+        public string? ScheduledAtUtc { get; set; }
 
         [FromForm(Name = "keepAttachmentIds")]
         public List<long> KeepAttachmentIds { get; set; } = [];

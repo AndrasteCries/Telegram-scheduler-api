@@ -5,11 +5,12 @@ using Microsoft.EntityFrameworkCore;
 using TelegramScheduler.Data;
 using TelegramScheduler.DTOs.Channels;
 using TelegramScheduler.DTOs.TelegramAuth;
+using TelegramScheduler.Models;
 using TelegramScheduler.Services;
 
 namespace TelegramScheduler.Controllers.telegram;
 
-[Authorize] 
+[Authorize]
 [ApiController]
 [Route("api/telegram/session")]
 public class TelegramSessionController : ControllerBase
@@ -18,9 +19,8 @@ public class TelegramSessionController : ControllerBase
     private readonly TelegramSessionService _telegramSessionService;
     private readonly TelegramChannelService _channelService;
     private readonly TelegramAccountService _accountService;
-    
-    private long CurrentUserId =>
-        long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    private long CurrentUserId => long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     public TelegramSessionController(AppDbContext db, TelegramSessionService telegramSessionService,
         TelegramChannelService channelService, TelegramAccountService accountService)
@@ -35,7 +35,7 @@ public class TelegramSessionController : ControllerBase
     public async Task<ActionResult<TelegramPhoneResponse>> SendCode(TelegramPhoneRequest request)
     {
         var user = await _db.Users.FindAsync(CurrentUserId);
-        
+
         if (user == null)
         {
             Console.WriteLine($"[SendCode] User {CurrentUserId} not found");
@@ -55,8 +55,7 @@ public class TelegramSessionController : ControllerBase
     }
 
     [HttpPost("code")]
-    public async Task<ActionResult> ConfirmCode(
-        TelegramCodeRequest request)
+    public async Task<ActionResult> ConfirmCode(TelegramCodeRequest request)
     {
         var userId = CurrentUserId;
         var user = await _db.Users.FindAsync(userId);
@@ -76,11 +75,7 @@ public class TelegramSessionController : ControllerBase
 
             var account = await _accountService.AddNewAccountToUserAsync(user.Id);
 
-            return Ok(new
-            {
-                status = "ready",
-                telegramAccountId = account.Id
-            });
+            return Ok(new { status = "ready", telegramAccountId = account.Id });
         }
         catch (Exception ex)
         {
@@ -96,6 +91,25 @@ public class TelegramSessionController : ControllerBase
         return Ok(accounts);
     }
 
+    [HttpPost("accounts/{telegramAccountId}/reauth/phone")]
+    public async Task<ActionResult<TelegramPhoneResponse>> StartReauthentication(long telegramAccountId, TelegramPhoneRequest request)
+    {
+        var state = await _accountService.StartReauthenticationAsync(telegramAccountId, CurrentUserId, request.PhoneNumber);
+
+        return Ok(new TelegramPhoneResponse(state.ToString()));
+    }
+    
+    [HttpPost("accounts/{telegramAccountId}/reauth/code")]
+    public async Task<ActionResult<TelegramAuthResult>> ConfirmReauthentication(long telegramAccountId, TelegramCodeRequest request)
+    {
+        var state = await _accountService.ConfirmReauthenticationAsync(telegramAccountId, CurrentUserId, request.Code);
+
+        return Ok(new TelegramAuthResult
+        {
+            Status = state.ToString()
+        });
+    }
+
     [HttpGet("channels/sync")]
     public async Task<ActionResult<List<ChannelResponse>>> SyncPostableChannels([FromQuery] long telegramAccountId)
     {
@@ -103,12 +117,11 @@ public class TelegramSessionController : ControllerBase
             .FirstOrDefaultAsync(a =>
                 a.Id == telegramAccountId &&
                 a.UserId == CurrentUserId);
-        
+
         if (account == null) return NotFound();
 
         await _channelService.SyncPostableChannelsAsync(telegramAccountId);
         var channels = await _channelService.GetChannelsAsync(telegramAccountId);
         return Ok(channels);
-
     }
 }
